@@ -1,0 +1,3 @@
+-n 1 -t single_node_4,0 -e single_node_4 -f ./tests/files/large_sorted
+
+# This is a more advanced single node test, which checks what happens when the server receives intersection requests for invalid keys.

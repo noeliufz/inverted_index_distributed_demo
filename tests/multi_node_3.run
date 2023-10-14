@@ -1,0 +1,3 @@
+-n 3 -t multi_node_3,0,multi_node_3,1,multi_node_3,2 -e multi_node_3 -f tests/files/sparse
+
+# This tests how your multi-node code handles cases where some nodes may end up with an empty partition

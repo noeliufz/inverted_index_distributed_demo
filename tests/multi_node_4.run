@@ -1,0 +1,4 @@
+-n 2 -t multi_node_4,1 -e multi_node_4 -f tests/files/extra_large
+
+# This multi-node test makes repeated queries for the same ten keys to node 1. It will need to forward these keys to node 0. 
+# If you've implemented caching correctly, only the first ten requests will need to be forwarded.

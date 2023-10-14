@@ -1,0 +1,3 @@
+-n 2 -t multi_node_2,0,multi_node_2,1 -e multi_node_2 -f tests/files/large_sorted
+
+# This test checks intersection requests across multiple nodes are handled correctly. 

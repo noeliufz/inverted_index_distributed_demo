@@ -1,0 +1,4 @@
+-n 2 -t parallel_3,0,parallel_3,1 -e parallel_3 -p -f tests/files/extra_large
+
+# This test makes repeated requests for different keys to multiple nodes concurrently.
+# This test may cause your code to deadlock if you haven't implemented multithreading inside each node.

@@ -1,0 +1,3 @@
+-n 1 -t single_node_3,0 -e single_node_3 -f ./tests/files/large_sorted
+
+# This test checks whether a single node can handle an intersection query correctly.

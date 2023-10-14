@@ -1,0 +1,3 @@
+-p -n 8 -t parallel_1_0,0,parallel_1_2,2,parallel_1_5,5 -e parallel_1 -f tests/files/extra_large
+
+# This test runs requests to multiple nodes in parallel.

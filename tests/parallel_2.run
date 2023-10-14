@@ -1,0 +1,4 @@
+-n 2 -t multi_node_2,0,multi_node_2,1 -e multi_node_2 -p -f tests/files/large_sorted
+
+# This test is the same as the multi_node_2 test, but it runs the requests to each node concurrently.
+# This test can cause your code to deadlock if you haven't implemented multithreading inside each node.
