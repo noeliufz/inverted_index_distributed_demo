@@ -8,6 +8,10 @@
 #define REQUESTLINELEN 128
 #define HOSTNAME "localhost"
 
+// Cache related constants
+#define MAX_OBJECT_SIZE 512 // object here refers to the posting list or result list being cached
+#define MAX_CACHE_SIZE MAX_OBJECT_SIZE*128
+
 /* This struct contains all information needed for each node */
 typedef struct node_info {
   int node_id;     // node number
@@ -217,7 +221,7 @@ int main(int argc, char const *argv[]) {
   int parent_connfd; // parent listens here to handle distributing database 
   int n_connfd;      
   pid_t pid;
-
+  
   if (argc != 4) {
     fprintf(stderr, "usage: %s [num_nodes] [starting_port] [name_of_file]\n", argv[0]);
     exit(1);
