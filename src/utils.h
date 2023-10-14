@@ -30,8 +30,8 @@ typedef struct value_array {
 } value_array; 
 
 typedef struct database {
-  char *m_ptr;         /* ptr to start of mmaped region of memory containing db */ 
-  size_t db_size;      /* size of mmaped memory */
+  char *m_ptr;         /* ptr to start of db in memory (in binary postings format) */ 
+  size_t db_size;      /* size of db in bytes */
   hash_table *h_table; /* hash table used to efficiently search the database */
 } database;
 

@@ -66,7 +66,7 @@ void request_partition(void) {
  *
  *  @note  The parent process creates the listening socket that the node should
  *         use to accept incoming connections. This file descriptor is stored in
- *         NODES[NODE_ID]->listen_fd. 
+ *         NODES[NODE_ID].listen_fd. 
 */
 void node_serve(void) {
   // TODO: implement this function. 
@@ -267,7 +267,7 @@ int main(int argc, char const *argv[]) {
     Close(NODES[n].listen_fd);
 
   // Parent can now begin waiting for children to send messages to contact.
-  parent_serve(argv[3], parent_connfd);
+  parent_serve((char *) argv[3], parent_connfd);
   Close(parent_connfd);
 
   parent_end();
