@@ -72,6 +72,7 @@ run_test () {
   # -t queries1,node1,queries2,node2   list of queries files containing requests to be sent to the associated nodes
   # -p                                 specifies to send each request file's requests in parallel (default is sequential)
   # -e expected                        path to file with expected result
+  # -f file                            path to database file
 
   local num_nodes=0
   local queryfilelist=()
