@@ -62,6 +62,32 @@ database partition = {NULL, 0, NULL};
  */
 void request_partition(void) {
   // TODO: implement this function. 
+  int child_fd;
+  char request[REQUESTLINELEN];
+  char port_name[REQUESTLINELEN];
+  char size[REQUESTLINELEN];
+  // create request string <nodeid>\n
+  sprintf(request, "%d\n", NODE_ID);
+
+  // convert port number to string
+  if (port_number_to_str(PARENT_PORT, port_name) == -1) {
+    fprintf(stderr, "Wrong port number.\n");
+    exit(1);
+  }
+
+  // connect with parent process to get partition
+  child_fd = Open_clientfd(HOSTNAME, port_name);
+  if (child_fd != -1) {
+    write(child_fd, request, strlen(request));
+    // read in size of the db
+    read(child_fd, size, REQUESTLINELEN);
+    sscanf(size, "%lu", &(partition.db_size));
+    // read in database
+    partition.m_ptr = malloc(partition.db_size);
+    read(child_fd, partition.m_ptr, partition.db_size);
+    build_hash_table(&partition);
+    Close(child_fd);
+  }
 }
 
 /** @brief The main server loop for a node. This will be called by a node after
@@ -74,6 +100,49 @@ void request_partition(void) {
 */
 void node_serve(void) {
   // TODO: implement this function. 
+  int connfd, size;
+  socklen_t clientlen;
+  struct sockaddr_storage clientaddr;
+  char* result_offset;
+  char key[REQUESTLINELEN], result[512];
+  value_array* array;
+
+  // start process loop
+  while (1) {
+    // accept with client
+    clientlen = sizeof(struct sockaddr_storage);
+    connfd = Accept(NODES[NODE_ID].listen_fd, (SA *) &clientaddr, &clientlen);
+
+    // read from client request
+    if((read(connfd, key, REQUESTLINELEN)) < 0) {
+      fprintf(stderr, "Failed to read from client information.\n");
+      exit(1);
+    }
+    
+    // convert key to search
+    request_line_to_key(key);
+    // search for one term
+    result_offset = find_entry(&partition, key);
+
+    // if get the result, return the result to client
+    if (result_offset != NULL) {
+      array = get_value_array(result_offset);
+      size = value_array_to_str(array, result, 512);
+      if (size < 0) {
+        fprintf(stderr, "Failed to get value from array");
+      }
+      write(connfd, key, strlen(key));
+      write(connfd, result, strlen(result));
+    } else {
+      sprintf(result, "%s not found\n", key);
+      write(connfd, result, strlen(result));
+    }
+
+    memset(result, 0, 512);
+
+    Close(connfd);
+  }
+  
 }
 
 /** @brief Called after a child process is forked. Initialises all information
