@@ -401,7 +401,7 @@ int port_number_to_str(int port, char *buff) {
 
 
 int is_found(char* key, char* result) {
-  char* not_found = (char*) malloc(512);
+  char* not_found = (char*) malloc(2048);
   sprintf(not_found, "%s not found\n", key);
   if (strcmp(not_found, result) == 0){
     free(not_found);
@@ -412,14 +412,14 @@ int is_found(char* key, char* result) {
 }
 
 char* generate_not_found(char* key) {
-  char* not_found = (char*) malloc(512);
+  char* not_found = (char*) malloc(2048);
   sprintf(not_found, "%s not found\n", key);
   return not_found;
 }
 
 
 char* generate_two_not_found(char* key1, char* key2) {
-  char* not_found = (char*) malloc(512);
+  char* not_found = (char*) malloc(2048);
   sprintf(not_found, "%s not found\n%s not found\n", key1, key2);
   return not_found;  
 }

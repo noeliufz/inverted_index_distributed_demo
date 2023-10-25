@@ -66,6 +66,8 @@ void request_partition(void) {
   char request[REQUESTLINELEN];
   char port_name[REQUESTLINELEN];
   char size[REQUESTLINELEN];
+  rio_t rio;
+  size_t n;
   // create request string <nodeid>\n
   sprintf(request, "%d\n", NODE_ID);
 
@@ -80,7 +82,7 @@ void request_partition(void) {
   if (child_fd != -1) {
     write(child_fd, request, strlen(request));
     // read in size of the db
-
+    Rio_readinitb(&rio, child_fd);
     int i = 0;
     char ch;
     while (i < REQUESTLINELEN - 1) {
@@ -93,41 +95,29 @@ void request_partition(void) {
         // end of file
         break;
       }
-
       size[i++] = ch;
       // end at \n
       if(ch == '\n') {
         break;
       }
-
     }
 
     size[i] = '\0';
 
-
-    //if((read(child_fd, size, REQUESTLINELEN)) == 0) {
-    //  exit(1);
-    //}
     sscanf(size, "%lu", &(partition.db_size));
     ssize_t b_read;
 
     // read in database
     partition.m_ptr = (char*) malloc(partition.db_size);
     char buffer[partition.db_size];
-    // while ((b_read = read(child_fd, buffer, partition.db_size)) > 0) {
-    //   strcat(partition.m_ptr, buffer);
-    // }
     size_t total_bytes_read = 0;
 
     while (total_bytes_read < partition.db_size) {
         ssize_t bytes_read = read(child_fd, buffer, partition.db_size - total_bytes_read);
-
         if (bytes_read <= 0) {
             break;
         }
-
         memcpy(partition.m_ptr + total_bytes_read, buffer, bytes_read);
-
         total_bytes_read += bytes_read;
     }
     build_hash_table(&partition);
@@ -143,15 +133,16 @@ void request_partition(void) {
 */
 char* get_one_result_string(char* key) {
   char* result_offset;
-  char* result = (char*) malloc(512);
+  char* result = (char*) malloc(2048);
   int size;
   value_array* array;
-
+  size_t n;
+  rio_t rio;  
   // find inside this node
   result_offset = find_entry(&partition, key);
   // if found inside this node
   if (result_offset) {
-    entry_to_str(result_offset, result, 512);
+    entry_to_str(result_offset, result, 2048);
     return result;
   }
 
@@ -161,16 +152,20 @@ char* get_one_result_string(char* key) {
     char port_name[128];
     port_number_to_str(NODES[id].port_number, port_name);
     int fd = Open_clientfd(HOSTNAME, port_name);
-
-    strcat(key, "\n");
-    write(fd, key, strlen(key));
-    read(fd, result, 512);
+    // get result from other node
+    Rio_readinitb(&rio, fd);    
+    char temp[2048];
+    strcpy(temp, key);
+    strcat(temp, "\n");
+    write(fd, temp, strlen(temp));
+    Rio_readlineb(&rio, result, 2048);
     Close(fd);
+    // if found, return the result
     if (is_found(key, result)) {
       return result;
     }
-    
   }
+  // not found, return null
   free(result);
   return NULL;
 }
@@ -179,37 +174,41 @@ char* get_two_result(char* key1, char* key2) {
   char* result1 = get_one_result_string(key1);
   char* result2 = get_one_result_string(key2);
   char* final_result;
-
+  // if neither found
   if(!result1 && !result2) {
     final_result = generate_two_not_found(key1, key2);
     return final_result;
   }
-
+  // if only one found
   if(!result1) {
     final_result = generate_not_found(key1);
     return final_result;
   }
-
   if(!result2) {
     final_result = generate_not_found(key2);
     return final_result;
   }
-
+  // if all found
   value_array* va1 = create_value_array(result1);
   value_array* va2 = create_value_array(result2);
   value_array* intersection = get_intersection(va1, va2);
+
+  // delete \n at the end as it might be added one when requesting from other nodes
+  request_line_to_key(key1);
+  request_line_to_key(key2);
+  // generate final response string
+  final_result = (char*) malloc(2048);
+  sprintf(final_result, "%s,%s", key1, key2);
+  char str[2048];
+  value_array_to_str(intersection, str, 2048);
+  strcat(final_result, str);
+  // free memories
   free(va1);
   free(va2);
-  
-  final_result = (char*) malloc(512);
-  sprintf(final_result, "%s,%s", key1, key2);
-  char str[512];
-  value_array_to_str(intersection, str, 512);
-  strcat(final_result, str);
-
+  free(result1);
+  free(result2);
   free(intersection);
   return final_result;
-
 }
 
 /** @brief The main server loop for a node. This will be called by a node after
@@ -226,40 +225,42 @@ void node_serve(void) {
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
   char buf[REQUESTLINELEN];
+  rio_t rio;
+  size_t n;
 
   // start process loop
   while (1) {
     // accept with client
     clientlen = sizeof(struct sockaddr_storage);
     connfd = Accept(NODES[NODE_ID].listen_fd, (SA *) &clientaddr, &clientlen);
+    Rio_readinitb(&rio, connfd);      
     char key[REQUESTLINELEN];
-    read(connfd, key, REQUESTLINELEN);
-    request_line_to_key(key);
-
-    char space = ' ';
-    if (!(strchr(key, space))){
-      char *result = get_one_result_string(key);
-      if (result) {
-        write(connfd, result, strlen(result));
-        free(result);
-      } else {
-        result = generate_not_found(key);
-        write(connfd, result, strlen(result));
+    while ((n = Rio_readlineb(&rio, key, REQUESTLINELEN)) > 0){
+      char space = ' ';
+      // if one term search
+      if (!(strchr(key, space))) {
+        request_line_to_key(key);
+        char *result = get_one_result_string(key);
+        if (result) {
+          rio_writen(connfd, result, strlen(result));
+          free(result);
+        } else {
+          result = generate_not_found(key);
+          rio_writen(connfd, result, strlen(result));
+          free(result);
+        }
+      } else {  // two term search
+        char* key1 = strtok(key, " ");
+        char* key2 = strtok(NULL, " ");
+        request_line_to_key(key1);
+        request_line_to_key(key2);
+        char* result = get_two_result(key1, key2);
+        rio_writen(connfd, result, strlen(result));
         free(result);
       }
-    } else {
-      char* key1 = strtok(key, " ");
-      char* key2 = strtok(NULL, " ");
-      char* result = get_two_result(key1, key2);
-
-      write(connfd, result, strlen(result));
-      free(result);
     }
-  
-    
     Close(connfd);
   }
-  
 }
 
 
