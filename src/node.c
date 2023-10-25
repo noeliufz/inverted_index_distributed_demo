@@ -80,14 +80,136 @@ void request_partition(void) {
   if (child_fd != -1) {
     write(child_fd, request, strlen(request));
     // read in size of the db
-    read(child_fd, size, REQUESTLINELEN);
+
+    int i = 0;
+    char ch;
+    while (i < REQUESTLINELEN - 1) {
+      ssize_t bytes_read = read(child_fd, &ch, 1);
+
+      if(bytes_read == -1) {
+        perror("Read error");
+        break;
+      } else if(bytes_read == 0) {
+        // end of file
+        break;
+      }
+
+      size[i++] = ch;
+      // end at \n
+      if(ch == '\n') {
+        break;
+      }
+
+    }
+
+    size[i] = '\0';
+
+
+    //if((read(child_fd, size, REQUESTLINELEN)) == 0) {
+    //  exit(1);
+    //}
     sscanf(size, "%lu", &(partition.db_size));
+    ssize_t b_read;
+
     // read in database
-    partition.m_ptr = malloc(partition.db_size);
-    read(child_fd, partition.m_ptr, partition.db_size);
+    partition.m_ptr = (char*) malloc(partition.db_size);
+    char buffer[partition.db_size];
+    // while ((b_read = read(child_fd, buffer, partition.db_size)) > 0) {
+    //   strcat(partition.m_ptr, buffer);
+    // }
+    size_t total_bytes_read = 0;
+
+    while (total_bytes_read < partition.db_size) {
+        ssize_t bytes_read = read(child_fd, buffer, partition.db_size - total_bytes_read);
+
+        if (bytes_read <= 0) {
+            break;
+        }
+
+        memcpy(partition.m_ptr + total_bytes_read, buffer, bytes_read);
+
+        total_bytes_read += bytes_read;
+    }
     build_hash_table(&partition);
     Close(child_fd);
   }
+}
+
+/** 
+ * This function is to search whether the key is in the whole database (including
+ * other nodes). It will connect to other nodes if necessary.
+ * This works only for one node.
+ * @return formatted string if found; NULL if not found
+*/
+char* get_one_result_string(char* key) {
+  char* result_offset;
+  char* result = (char*) malloc(512);
+  int size;
+  value_array* array;
+
+  // find inside this node
+  result_offset = find_entry(&partition, key);
+  // if found inside this node
+  if (result_offset) {
+    entry_to_str(result_offset, result, 512);
+    return result;
+  }
+
+  // if not found inside this node, connect with other node
+  int id = find_node(key, TOTAL_NODES);
+  if (NODE_ID != id) {
+    char port_name[128];
+    port_number_to_str(NODES[id].port_number, port_name);
+    int fd = Open_clientfd(HOSTNAME, port_name);
+
+    strcat(key, "\n");
+    write(fd, key, strlen(key));
+    read(fd, result, 512);
+    Close(fd);
+    if (is_found(key, result)) {
+      return result;
+    }
+    
+  }
+  free(result);
+  return NULL;
+}
+
+char* get_two_result(char* key1, char* key2) {
+  char* result1 = get_one_result_string(key1);
+  char* result2 = get_one_result_string(key2);
+  char* final_result;
+
+  if(!result1 && !result2) {
+    final_result = generate_two_not_found(key1, key2);
+    return final_result;
+  }
+
+  if(!result1) {
+    final_result = generate_not_found(key1);
+    return final_result;
+  }
+
+  if(!result2) {
+    final_result = generate_not_found(key2);
+    return final_result;
+  }
+
+  value_array* va1 = create_value_array(result1);
+  value_array* va2 = create_value_array(result2);
+  value_array* intersection = get_intersection(va1, va2);
+  free(va1);
+  free(va2);
+  
+  final_result = (char*) malloc(512);
+  sprintf(final_result, "%s,%s", key1, key2);
+  char str[512];
+  value_array_to_str(intersection, str, 512);
+  strcat(final_result, str);
+
+  free(intersection);
+  return final_result;
+
 }
 
 /** @brief The main server loop for a node. This will be called by a node after
@@ -103,47 +225,44 @@ void node_serve(void) {
   int connfd, size;
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
-  char* result_offset;
-  char key[REQUESTLINELEN], result[512];
-  value_array* array;
+  char buf[REQUESTLINELEN];
 
   // start process loop
   while (1) {
     // accept with client
     clientlen = sizeof(struct sockaddr_storage);
     connfd = Accept(NODES[NODE_ID].listen_fd, (SA *) &clientaddr, &clientlen);
-
-    // read from client request
-    if((read(connfd, key, REQUESTLINELEN)) < 0) {
-      fprintf(stderr, "Failed to read from client information.\n");
-      exit(1);
-    }
-    
-    // convert key to search
+    char key[REQUESTLINELEN];
+    read(connfd, key, REQUESTLINELEN);
     request_line_to_key(key);
-    // search for one term
-    result_offset = find_entry(&partition, key);
 
-    // if get the result, return the result to client
-    if (result_offset != NULL) {
-      array = get_value_array(result_offset);
-      size = value_array_to_str(array, result, 512);
-      if (size < 0) {
-        fprintf(stderr, "Failed to get value from array");
+    char space = ' ';
+    if (!(strchr(key, space))){
+      char *result = get_one_result_string(key);
+      if (result) {
+        write(connfd, result, strlen(result));
+        free(result);
+      } else {
+        result = generate_not_found(key);
+        write(connfd, result, strlen(result));
+        free(result);
       }
-      write(connfd, key, strlen(key));
-      write(connfd, result, strlen(result));
     } else {
-      sprintf(result, "%s not found\n", key);
+      char* key1 = strtok(key, " ");
+      char* key2 = strtok(NULL, " ");
+      char* result = get_two_result(key1, key2);
+
       write(connfd, result, strlen(result));
+      free(result);
     }
-
-    memset(result, 0, 512);
-
+  
+    
     Close(connfd);
   }
   
 }
+
+
 
 /** @brief Called after a child process is forked. Initialises all information
  *         needed by an individual node. It then calls request_partition to get
@@ -166,6 +285,8 @@ void start_node(int node_id) {
 
   request_partition();
   node_serve();
+
+  //free(partition.m_ptr);
 }
 
 

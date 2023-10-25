@@ -69,3 +69,8 @@ char *get_next_key_offset(char *entry_offset);
 int find_node(char *key, int total_nodes);
 
 size_t round_up(size_t n, size_t mult);
+
+/* Custom functions */
+int is_found(char* key, char* result);
+char* generate_not_found(char* key);
+char* generate_two_not_found(char* key1, char* key2);
