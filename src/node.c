@@ -67,7 +67,6 @@ void request_partition(void) {
   char port_name[REQUESTLINELEN];
   char size[REQUESTLINELEN];
   rio_t rio;
-  size_t n;
   // create request string <nodeid>\n
   sprintf(request, "%d\n", NODE_ID);
 
@@ -79,50 +78,25 @@ void request_partition(void) {
 
   // connect with parent process to get partition
   child_fd = Open_clientfd(HOSTNAME, port_name);
-  if (child_fd != -1) {
-    write(child_fd, request, strlen(request));
-    // read in size of the db
-    Rio_readinitb(&rio, child_fd);
-    int i = 0;
-    char ch;
-    while (i < REQUESTLINELEN - 1) {
-      ssize_t bytes_read = read(child_fd, &ch, 1);
-
-      if(bytes_read == -1) {
-        perror("Read error");
-        break;
-      } else if(bytes_read == 0) {
-        // end of file
-        break;
-      }
-      size[i++] = ch;
-      // end at \n
-      if(ch == '\n') {
-        break;
-      }
-    }
-
-    size[i] = '\0';
-
-    sscanf(size, "%lu", &(partition.db_size));
-    ssize_t b_read;
-
-    // read in database
-    partition.m_ptr = (char*) malloc(partition.db_size);
-    char buffer[partition.db_size];
-    size_t total_bytes_read = 0;
-
-    while (total_bytes_read < partition.db_size) {
-        ssize_t bytes_read = read(child_fd, buffer, partition.db_size - total_bytes_read);
-        if (bytes_read <= 0) {
-            break;
-        }
-        memcpy(partition.m_ptr + total_bytes_read, buffer, bytes_read);
-        total_bytes_read += bytes_read;
-    }
-    build_hash_table(&partition);
-    Close(child_fd);
+  if (child_fd == -1) {
+    fprintf(stderr, "Connect with parent process failed.\n");
+    exit(1);
   }
+
+  Rio_readinitb(&rio, child_fd);
+  Rio_writen(child_fd, request, strlen(request));
+  // read in size of the db
+  Rio_readlineb(&rio, size, sizeof(size_t));
+
+  sscanf(size, "%zu", &(partition.db_size));
+
+  // read in database
+  partition.m_ptr = malloc(partition.db_size);
+  Rio_readnb(&rio, partition.m_ptr, partition.db_size);
+
+  build_hash_table(&partition);
+  Close(child_fd);
+  
 }
 
 /** 
@@ -134,9 +108,6 @@ void request_partition(void) {
 char* get_one_result_string(char* key) {
   char* result_offset;
   char* result = (char*) malloc(2048);
-  int size;
-  value_array* array;
-  size_t n;
   rio_t rio;  
   // find inside this node
   result_offset = find_entry(&partition, key);
@@ -221,20 +192,19 @@ char* get_two_result(char* key1, char* key2) {
 */
 void node_serve(void) {
   // TODO: implement this function. 
-  int connfd, size;
+  int connfd;
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
-  char buf[REQUESTLINELEN];
   rio_t rio;
   size_t n;
-
+  char key[REQUESTLINELEN];
+  
   // start process loop
   while (1) {
     // accept with client
     clientlen = sizeof(struct sockaddr_storage);
     connfd = Accept(NODES[NODE_ID].listen_fd, (SA *) &clientaddr, &clientlen);
-    Rio_readinitb(&rio, connfd);      
-    char key[REQUESTLINELEN];
+    Rio_readinitb(&rio, connfd);    
     while ((n = Rio_readlineb(&rio, key, REQUESTLINELEN)) > 0){
       char space = ' ';
       // if one term search
