@@ -14,7 +14,7 @@ csapp.o: src/csapp/csapp.c
 %.o : src/%.c 
 	"$(CC)"	$(CFLAGS) -c $^
 
-db_server : node.o utils.o csapp.o
+db_server : node.o utils.o csapp.o sbuf.o
 	"$(CC)" $(CFLAGS) -o $@ $^
 
 .PHONY: clean

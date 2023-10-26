@@ -1,8 +1,12 @@
 #include "csapp/csapp.h"
+#include "sbuf.h"
 #include "utils.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#define NTHREADS 4
+#define SBUFSIZE 16
 
 // You may assume that all requests sent to a node are less than this length
 #define REQUESTLINELEN 128
@@ -41,6 +45,8 @@ node_info *NODES = NULL;
 // Note that node ids start at 0. If you're just implementing the single node 
 // server this will be set to 0.
 int NODE_ID = -1;
+
+sbuf_t sbuf;
 
 // Each node will fill this struct in with it's own portion of the database.
 database partition = {NULL, 0, NULL};
@@ -182,28 +188,15 @@ char* get_two_result(char* key1, char* key2) {
   return final_result;
 }
 
-/** @brief The main server loop for a node. This will be called by a node after
- *         it has finished the digest phase. The server will run indefinitely,
- *         responding to requests. Each request is a single line. 
- *
- *  @note  The parent process creates the listening socket that the node should
- *         use to accept incoming connections. This file descriptor is stored in
- *         NODES[NODE_ID].listen_fd. 
-*/
-void node_serve(void) {
-  // TODO: implement this function. 
-  int connfd;
-  socklen_t clientlen;
-  struct sockaddr_storage clientaddr;
-  rio_t rio;
-  size_t n;
+
+void *thread(void *vargp) {
+  Pthread_detach(pthread_self());
   char key[REQUESTLINELEN];
-  
-  // start process loop
+  rio_t rio;
+  int connfd, n;
+
   while (1) {
-    // accept with client
-    clientlen = sizeof(struct sockaddr_storage);
-    connfd = Accept(NODES[NODE_ID].listen_fd, (SA *) &clientaddr, &clientlen);
+    connfd = sbuf_remove(&sbuf);
     Rio_readinitb(&rio, connfd);    
     while ((n = Rio_readlineb(&rio, key, REQUESTLINELEN)) > 0){
       char space = ' ';
@@ -233,6 +226,34 @@ void node_serve(void) {
   }
 }
 
+/** @brief The main server loop for a node. This will be called by a node after
+ *         it has finished the digest phase. The server will run indefinitely,
+ *         responding to requests. Each request is a single line. 
+ *
+ *  @note  The parent process creates the listening socket that the node should
+ *         use to accept incoming connections. This file descriptor is stored in
+ *         NODES[NODE_ID].listen_fd. 
+*/
+void node_serve(void) {
+  // TODO: implement this function. 
+  int connfd;
+  socklen_t clientlen;
+  struct sockaddr_storage clientaddr;
+
+  pthread_t tid;
+
+  sbuf_init(&sbuf, SBUFSIZE);
+  for (int i = 0; i < NTHREADS; i++)
+    Pthread_create(&tid, NULL, thread, NULL);
+
+  // start process loop
+  while (1) {
+    // accept with client
+    clientlen = sizeof(struct sockaddr_storage);
+    connfd = Accept(NODES[NODE_ID].listen_fd, (SA *) &clientaddr, &clientlen);
+    sbuf_insert(&sbuf, connfd);
+  }
+}
 
 
 /** @brief Called after a child process is forked. Initialises all information
