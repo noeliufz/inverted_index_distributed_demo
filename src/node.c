@@ -1,6 +1,7 @@
 #include "csapp/csapp.h"
 #include "sbuf.h"
 #include "utils.h"
+#include "cache.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +48,10 @@ node_info *NODES = NULL;
 int NODE_ID = -1;
 
 sbuf_t sbuf;
+
+Cache* cache;
+sem_t mutex, w;
+int readcnt = 0;
 
 // Each node will fill this struct in with it's own portion of the database.
 database partition = {NULL, 0, NULL};
@@ -112,6 +117,7 @@ void request_partition(void) {
  * @return formatted string if found; NULL if not found
 */
 char* get_one_result_string(char* key) {
+  int cache_index = -1;
   char* result_offset;
   char* result = (char*) malloc(2048);
   rio_t rio;  
@@ -120,6 +126,15 @@ char* get_one_result_string(char* key) {
   // if found inside this node
   if (result_offset) {
     entry_to_str(result_offset, result, 2048);
+    return result;
+  }
+
+  // find in cache
+  cache_index = lookup_cache(cache, key, &mutex, &w, &readcnt);
+  if (cache_index != -1) {
+    char* temp = get_from_cache(cache, cache_index, &mutex, &w);
+    strcpy(result, temp);
+    free(temp);
     return result;
   }
 
@@ -137,8 +152,9 @@ char* get_one_result_string(char* key) {
     write(fd, temp, strlen(temp));
     Rio_readlineb(&rio, result, 2048);
     Close(fd);
-    // if found, return the result
+    // if found, store in cache and return the result
     if (is_found(key, result)) {
+      write_cache(cache, key, result, &mutex, &w);
       return result;
     }
   }
@@ -276,6 +292,11 @@ void start_node(int node_id) {
   }
 
   request_partition();
+  cache = (Cache*) malloc(sizeof(Cache));
+  init_cache(cache, MAX_OBJECT_SIZE);
+  sem_init(&mutex, 0, 1);
+  sem_init(&w, 0, 1);
+
   node_serve();
 
   //free(partition.m_ptr);
