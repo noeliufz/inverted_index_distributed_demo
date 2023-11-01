@@ -117,7 +117,7 @@ void request_partition(void) {
  * @return formatted string if found; NULL if not found
 */
 char* get_one_result_string(char* key) {
-  int cache_index = -1;
+
   char* result_offset;
   char* result = (char*) malloc(2048);
   rio_t rio;  
@@ -130,13 +130,14 @@ char* get_one_result_string(char* key) {
   }
 
   // find in cache
-  cache_index = lookup_cache(cache, key, &mutex, &w, &readcnt);
-  if (cache_index != -1) {
-    char* temp = get_from_cache(cache, cache_index, &mutex, &w);
+  char* temp = NULL;
+  temp = lookup_cache(cache, key, &mutex, &w, &readcnt);
+  if (temp != NULL) {
     strcpy(result, temp);
     free(temp);
     return result;
   }
+
 
   // if not found inside this node, connect with other node
   int id = find_node(key, TOTAL_NODES);
@@ -163,6 +164,11 @@ char* get_one_result_string(char* key) {
   return NULL;
 }
 
+/**
+ * This function will return the result of the two-term request directly.
+ * @return result to return to the client. No need to create "not found" string
+ *  if not found.
+*/
 char* get_two_result(char* key1, char* key2) {
   char* result1 = get_one_result_string(key1);
   char* result2 = get_one_result_string(key2);
