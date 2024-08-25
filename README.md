@@ -1,9 +1,7 @@
-# comp2310-2023-assignment-2
+This is the assignment 2 of COMP 6310 in 2023.
 
-This is the assignment repository for your second assignment. 
+本项目为分布式系统项目demo，设计并实现了一个倒排索引系统。
 
-Do not modify the `.gitlab-ci.yml` file as the results of your CI will be used to generate grades. 
+索引信息自csv文件转为以二进制形式保存在本地，并加载到不同节点的内存中（通过进程模拟实现）。
 
-Tampering with this file will be noticed and may result in academic misconduct. 
-
-For more information, [read the assessment page](https://comp.anu.edu.au/courses/comp2310/assessments/07-distindex/).
+每个节点独立通过 socket 响应请求，并将不属于本节点的请求转发至对应节点，同时实现了缓存机制以提高响应效率。
